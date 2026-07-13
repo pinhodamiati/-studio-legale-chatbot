@@ -13,7 +13,7 @@ load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 risposta = client.models.generate_content(
-    model="gemini-3.1-flash-lite"
+    model="gemini-flash-latest",
     contents="Rispondi in italiano: sei pronto ad aiutare i clienti di uno studio legale?"
 )
 

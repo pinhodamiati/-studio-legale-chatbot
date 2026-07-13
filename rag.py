@@ -2,6 +2,8 @@
 # Modulo RAG: caricamento documenti, chunking, embedding, retrieval, generazione
 
 import os
+import pickle
+import hashlib
 from pathlib import Path
 from pypdf import PdfReader
 from google import genai
@@ -13,6 +15,9 @@ load_dotenv()
 CARTELLA_DOCUMENTI = "documenti"
 DIMENSIONE_CHUNK = 100  # numero di parole per chunk
 SOVRAPPOSIZIONE = 20    # parole condivise tra un chunk e il successivo
+
+CARTELLA_CACHE = ".cache"
+FILE_INDICE = os.path.join(CARTELLA_CACHE, "indice.pkl")
 
 
 def carica_documenti(cartella: str = CARTELLA_DOCUMENTI) -> list[dict]:
@@ -74,10 +79,31 @@ def calcola_embedding(testo: str) -> list[float]:
     return risposta.embeddings[0].values
 
 
+def _hash_chunk(chunk: list[dict]) -> str:
+    """Calcola un hash del contenuto dei chunk, per capire se i documenti
+    sono cambiati rispetto all'ultimo indice salvato su disco."""
+    contenuto = "".join(c["fonte"] + c["testo"] for c in chunk)
+    return hashlib.sha256(contenuto.encode("utf-8")).hexdigest()
+
+
 def costruisci_indice() -> list[dict]:
     """Costruisce l'indice completo: per ogni chunk, calcola il suo
-    embedding e lo memorizza insieme al testo e alla fonte."""
+    embedding e lo memorizza insieme al testo e alla fonte.
+
+    L'indice viene salvato su disco (.cache/indice.pkl): se i documenti
+    non sono cambiati, viene ricaricato da lì invece di richiamare
+    l'API di embedding, per non consumare inutilmente la quota
+    giornaliera ad ogni riavvio dell'app."""
     chunk = prepara_chunk_con_fonte()
+    hash_attuale = _hash_chunk(chunk)
+
+    if os.path.exists(FILE_INDICE):
+        with open(FILE_INDICE, "rb") as f:
+            dati_salvati = pickle.load(f)
+        if dati_salvati.get("hash") == hash_attuale:
+            print("Indice caricato dalla cache su disco (nessuna chiamata a embed_content).")
+            return dati_salvati["indice"]
+
     indice = []
     for c in chunk:
         vettore = calcola_embedding(c["testo"])
@@ -86,7 +112,13 @@ def costruisci_indice() -> list[dict]:
             "fonte": c["fonte"],
             "vettore": np.array(vettore),
         })
+
+    os.makedirs(CARTELLA_CACHE, exist_ok=True)
+    with open(FILE_INDICE, "wb") as f:
+        pickle.dump({"hash": hash_attuale, "indice": indice}, f)
+
     return indice
+
 
 def similarita_coseno(v1: np.ndarray, v2: np.ndarray) -> float:
     """Calcola la similarità del coseno tra due vettori: un valore tra
