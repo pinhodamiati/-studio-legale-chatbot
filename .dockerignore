@@ -4,6 +4,5 @@ __pycache__/
 .env
 .git/
 .gitignore
-model.joblib
 .pytest_cache/
 *.egg-info/

@@ -3,3 +3,6 @@ uvicorn[standard]
 google-genai
 python-dotenv
 pydantic
+streamlit
+numpy
+pypdf
